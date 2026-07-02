@@ -63,28 +63,37 @@ def load_and_clean_table(spec: TableSpec) -> tuple[pd.DataFrame, pd.DataFrame]:
     return raw_df, cleaned_df
 
 
-def source_metrics(raw_df: pd.DataFrame, spec: TableSpec) -> dict[str, Any]:
-    """Compute row count, checksum sums, and distinct-count metrics."""
+def source_metrics(cleaned_df: pd.DataFrame, spec: TableSpec) -> dict[str, Any]:
+    """Compute row count, checksum sums, and distinct-count metrics.
+
+    Metrics are computed from the cleaned (Snowflake-ready) frame using the
+    target column names so they compare apples-to-apples with the SQL emitted
+    by generate_validation_sql.py, which aggregates the loaded Snowflake table.
+    """
+    to_target = {c.source_col: c.target_col for c in spec.columns}
+    key_targets = [to_target[c] for c in spec.natural_key_columns]
     metrics: dict[str, Any] = {
-        "row_count": int(len(raw_df)),
+        "row_count": int(len(cleaned_df)),
         "numeric_sums": {},
         "distinct_counts": {},
         "natural_key_distinct_count": 0,
-        "natural_key_columns": list(spec.natural_key_columns),
+        "natural_key_columns": key_targets,
     }
 
     for column_name in spec.numeric_columns:
-        metrics["numeric_sums"][column_name] = round(
-            float(pd.to_numeric(raw_df[column_name], errors="coerce").sum()),
+        target = to_target[column_name]
+        metrics["numeric_sums"][target] = round(
+            float(pd.to_numeric(cleaned_df[target], errors="coerce").sum()),
             2,
         )
 
     for column_name in spec.distinct_count_columns:
-        metrics["distinct_counts"][column_name] = int(raw_df[column_name].nunique())
+        target = to_target[column_name]
+        metrics["distinct_counts"][target] = int(cleaned_df[target].nunique())
 
-    if spec.natural_key_columns:
+    if key_targets:
         metrics["natural_key_distinct_count"] = int(
-            raw_df.loc[:, list(spec.natural_key_columns)].drop_duplicates().shape[0]
+            cleaned_df.loc[:, key_targets].drop_duplicates().shape[0]
         )
 
     return metrics
@@ -126,10 +135,10 @@ def write_metrics_file(metrics: dict[str, dict[str, Any]], output_path: Path) ->
 
 def migrate_table(spec: TableSpec, output_dir: Path) -> dict[str, Any]:
     """Convert one SAS table to CSV and return its source metrics."""
-    raw_df, cleaned_df = load_and_clean_table(spec)
+    _raw_df, cleaned_df = load_and_clean_table(spec)
     csv_path = output_dir / f"{spec.table_name}.csv"
     write_clean_csv(cleaned_df, csv_path)
-    metrics = source_metrics(raw_df, spec)
+    metrics = source_metrics(cleaned_df, spec)
     print(
         f"{spec.table_name}: rows={metrics['row_count']}, "
         f"csv={csv_path.relative_to(REPO_ROOT)}, "

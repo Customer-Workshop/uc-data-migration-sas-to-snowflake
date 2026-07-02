@@ -172,14 +172,24 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tables = [TABLE_BY_NAME[args.table]] if args.table else list(TABLE_SPECS)
+
+    # Single-table runs update only their entry so a prior --all manifest is
+    # not silently reduced to one table.
+    metrics_path = output_dir / "source_metrics.json"
     metrics_manifest: dict[str, dict[str, Any]] = {}
-    copy_statements: list[str] = []
+    if args.table and metrics_path.exists():
+        metrics_manifest = json.loads(metrics_path.read_text(encoding="utf-8"))
 
     for spec in tables:
         metrics_manifest[spec.table_name] = migrate_table(spec, output_dir)
-        copy_statements.append(copy_statement(spec, output_dir / f"{spec.table_name}.csv"))
 
-    write_metrics_file(metrics_manifest, output_dir / "source_metrics.json")
+    # COPY commands are data-independent, so always emit the full set.
+    copy_statements = [
+        copy_statement(spec, output_dir / f"{spec.table_name}.csv")
+        for spec in TABLE_SPECS
+    ]
+
+    write_metrics_file(metrics_manifest, metrics_path)
     write_copy_file(copy_statements, output_dir / "COPY_INTO.sql")
 
     print(f"Wrote metrics to {output_dir / 'source_metrics.json'}")

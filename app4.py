@@ -24,6 +24,7 @@ import streamlit.components.v1 as components
 # Session State Initialization
 # ------------------------------------------------------------------------
 from lineage.lineage_functions import generate_lineage_graph, collect_upstream_tables
+from lineage.attribute_overlap import compute_attribute_overlap
 from helper_functions import decode_value, suggest_columns_for_rule, validate_datasets
 from helper_functions import load_validations_from_csv, update_validations_in_csv
 from llm_agents.llm_reports import generate_llm_summary
@@ -635,7 +636,7 @@ if st.session_state.sas_df is not None and st.session_state.sf_df is not None:
 # ---------------------------
     st.markdown("---")
     st.subheader("\U0001F50D Attribute Overlap")
-    overlap_data = json.load(open("lineage/attribute_overlap_fixture.json"))  # TODO(DJ-48): swap to compute_attribute_overlap("lineage/SAS_lineage.json", "lineage/SF_lineage.json", "sample_data")
+    overlap_data = compute_attribute_overlap("lineage/SAS_lineage.json", "lineage/SF_lineage.json", "sample_data")
 
     st.markdown("**Overlap Matrix**")
     matrix = overlap_data["overlap_matrix"]
